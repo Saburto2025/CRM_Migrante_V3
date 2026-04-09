@@ -44,6 +44,14 @@ export default function GoogleDriveSync({ onDataLoad, getData }: GoogleDriveSync
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [credentialsConfigured, setCredentialsConfigured] = useState(false);
+
+  // Verificar si las credenciales están configuradas
+  useEffect(() => {
+    const hasClientId = GoogleDrive.GOOGLE_CLIENT_ID && GoogleDrive.GOOGLE_CLIENT_ID !== 'TU_GOOGLE_CLIENT_ID_AQUI';
+    const hasApiKey = GoogleDrive.GOOGLE_API_KEY && GoogleDrive.GOOGLE_API_KEY !== 'TU_GOOGLE_API_KEY_AQUI';
+    setCredentialsConfigured(hasClientId && hasApiKey);
+  }, []);
 
   // Verificar autenticación al montar
   useEffect(() => {
@@ -78,6 +86,10 @@ export default function GoogleDriveSync({ onDataLoad, getData }: GoogleDriveSync
 
   // Iniciar login con Google
   const handleLogin = () => {
+    if (!credentialsConfigured) {
+      toast.error('Google Drive no está configurado. Revisa la documentación para configurarlo.');
+      return;
+    }
     const authUrl = GoogleDrive.getAuthUrl();
     window.location.href = authUrl;
   };
@@ -297,14 +309,19 @@ export default function GoogleDriveSync({ onDataLoad, getData }: GoogleDriveSync
               <p className="text-xs text-slate-400 mt-1">
                 Conecta para sincronizar tus datos
               </p>
+              {!credentialsConfigured && (
+                <p className="text-xs text-amber-600 mt-2 bg-amber-50 px-2 py-1 rounded">
+                  ⚠️ Google Drive no configurado
+                </p>
+              )}
             </div>
-            
+
             <DropdownMenuSeparator />
-            
+
             {/* Botón de login */}
-            <DropdownMenuItem onClick={handleLogin} className="text-emerald-600">
+            <DropdownMenuItem onClick={handleLogin} className="text-emerald-600" disabled={!credentialsConfigured}>
               <LogIn className="h-4 w-4 mr-2" />
-              Conectar con Google
+              {!credentialsConfigured ? 'No configurado' : 'Conectar con Google'}
             </DropdownMenuItem>
             
             <DropdownMenuSeparator />

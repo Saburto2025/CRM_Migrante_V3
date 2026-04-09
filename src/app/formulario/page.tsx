@@ -47,7 +47,7 @@ export default function FormularioPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!projectId) {
       toast.error('ID de proyecto no válido');
       return;
@@ -61,70 +61,26 @@ export default function FormularioPage() {
     setIsSubmitting(true);
 
     try {
-      // Primero intentar guardar en la API (si la base de datos funciona)
-      let apiSuccess = false;
-      try {
-        const response = await fetch('/api/public/lead', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            projectId,
-            ...formData,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          apiSuccess = data.success;
-        }
-      } catch (apiError) {
-        console.log('API no disponible, usando localStorage');
-      }
-
-      // Si la API falló o no está disponible, guardar en localStorage
-      if (!apiSuccess) {
-        // Guardar en localStorage del formulario
-        const storedLeads = JSON.parse(localStorage.getItem('public_leads') || '[]');
-        const newLead = {
-          id: `lead-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      // Enviar a la API
+      const response = await fetch('/api/public/lead', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           projectId,
           ...formData,
-          source: 'formulario',
-          createdAt: new Date().toISOString(),
-          imported: false,
-        };
-        storedLeads.push(newLead);
-        localStorage.setItem('public_leads', JSON.stringify(storedLeads));
+        }),
+      });
 
-        // También guardar en localStorage del CRM (para que se pueda importar después)
-        const crmLeads = JSON.parse(localStorage.getItem('merka-leads') || '[]');
-        const firstStage = localStorage.getItem('merka-pipeline-stages') 
-          ? JSON.parse(localStorage.getItem('merka-pipeline-stages'))[0]?.key || 'LEAD'
-          : 'LEAD';
-        
-        const crmLead = {
-          id: newLead.id,
-          projectId: newLead.projectId,
-          firstName: newLead.firstName,
-          lastName: newLead.lastName,
-          email: newLead.email || undefined,
-          whatsapp: newLead.whatsapp || undefined,
-          phone: newLead.phone || undefined,
-          company: newLead.company || undefined,
-          description: newLead.message || undefined,
-          source: 'formulario',
-          stage: firstStage, // PRIMERA FASE
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        crmLeads.push(crmLead);
-        localStorage.setItem('merka-leads', JSON.stringify(crmLeads));
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Error al enviar el formulario');
       }
 
       setIsSuccess(true);
-      toast.success('¡Gracias! Hemos recibido tu información.');
+      toast.success('¡Gracias! Hemos recibido tu información correctamente.');
     } catch (error) {
       console.error('Error al enviar formulario:', error);
       toast.error('Error de conexión. Por favor intenta nuevamente.');

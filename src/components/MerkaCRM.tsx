@@ -352,6 +352,14 @@ export default function MerkaCRM() {
   useEffect(() => { if (isHydrated) saveToStorage(STORAGE_KEYS.PROJECTS, projects); }, [projects, isHydrated]);
   useEffect(() => { if (isHydrated) saveToStorage(STORAGE_KEYS.LEADS, leads); }, [leads, isHydrated]);
   useEffect(() => { if (isHydrated) saveToStorage(STORAGE_KEYS.CURRENT_PROJECT, currentProject); }, [currentProject, isHydrated]);
+
+  // Cargar leads de la API cuando cambia el proyecto actual
+  useEffect(() => {
+    if (currentProject && isHydrated) {
+      loadLeadsFromAPI();
+    }
+  }, [currentProject, isHydrated]);
+
   useEffect(() => { if (isHydrated) saveToStorage(STORAGE_KEYS.CUSTOM_FIELDS, customFields); }, [customFields, isHydrated]);
   useEffect(() => { if (isHydrated) saveToStorage(STORAGE_KEYS.PIPELINE_STAGES, pipelineStages); }, [pipelineStages, isHydrated]);
   useEffect(() => { if (isHydrated) saveToStorage(STORAGE_KEYS.USERS, users); }, [users, isHydrated]);
@@ -499,43 +507,56 @@ export default function MerkaCRM() {
   const removeFile = (fileId: string) => setLeadFiles(prev => prev.filter(f => f.id !== fileId));
 
   // Lead CRUD - CORREGIDO: Cae a la PRIMERA fase
-  const handleCreateLead = () => {
+  const handleCreateLead = async () => {
     if (!currentProject) { toast.error('Selecciona un proyecto'); return; }
-    if (!leadForm.firstName.trim() || !leadForm.lastName.trim()) { 
-      toast.error('Nombre y apellido son requeridos'); 
-      return; 
+    if (!leadForm.firstName.trim() || !leadForm.lastName.trim()) {
+      toast.error('Nombre y apellido son requeridos');
+      return;
     }
-    
+
     // CORRECCIÓN CRÍTICA: Usar la PRIMERA etapa en orden (index 0) en lugar de find
     const firstStageKey = pipelineStages.length > 0 ? pipelineStages[0].key : 'LEAD';
-    
-    const newLead: Lead = {
-      id: generateId(), 
-      projectId: currentProject.id, 
-      firstName: leadForm.firstName, 
-      lastName: leadForm.lastName,
-      company: leadForm.company || undefined, 
-      email: leadForm.email || undefined, 
-      whatsapp: leadForm.whatsapp || undefined,
-      description: leadForm.description || undefined, 
-      source: leadForm.source, 
-      sourceDetails: leadForm.sourceDetails || undefined,
-      estimatedValue: leadForm.estimatedValue ? parseFloat(leadForm.estimatedValue) : undefined, 
-      notes: leadForm.notes || undefined,
-      // CORRECCIÓN: SIEMPRE va a la primera fase
-      stage: firstStageKey, 
-      files: leadFiles.length > 0 ? leadFiles : undefined,
-      createdAt: new Date().toISOString(), 
-      updatedAt: new Date().toISOString(),
-    };
-    setLeads(prev => [...prev, newLead]);
-    setLeadDialogOpen(false);
-    setLeadForm({ 
-      firstName: '', lastName: '', company: '', email: '', whatsapp: '', 
-      description: '', source: 'manual', sourceDetails: '', estimatedValue: '', notes: '' 
-    });
-    setLeadFiles([]);
-    toast.success('Lead creado en la primera fase');
+
+    try {
+      const response = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: currentProject.id,
+          firstName: leadForm.firstName,
+          lastName: leadForm.lastName,
+          company: leadForm.company || null,
+          email: leadForm.email || null,
+          whatsapp: leadForm.whatsapp || null,
+          description: leadForm.description || null,
+          source: leadForm.source,
+          sourceDetails: leadForm.sourceDetails || null,
+          estimatedValue: leadForm.estimatedValue ? parseFloat(leadForm.estimatedValue) : null,
+          notes: leadForm.notes || null,
+          stage: firstStageKey,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Error al crear lead');
+      }
+
+      // Recargar leads desde la API
+      await loadLeadsFromAPI();
+
+      setLeadDialogOpen(false);
+      setLeadForm({
+        firstName: '', lastName: '', company: '', email: '', whatsapp: '',
+        description: '', source: 'manual', sourceDetails: '', estimatedValue: '', notes: ''
+      });
+      setLeadFiles([]);
+      toast.success('Lead creado en la primera fase');
+    } catch (error) {
+      console.error('Error al crear lead:', error);
+      toast.error('Error al crear lead');
+    }
   };
 
   const handleEditLead = () => {
@@ -600,51 +621,45 @@ export default function MerkaCRM() {
     }
 
     setIsLoadingPublicLeads(true);
-    
+
     try {
-      // Primero intentar cargar de la API
-      let apiLeads: any[] = [];
-      try {
-        const response = await fetch(`/api/public/lead?p=${currentProject.id}&imported=false`);
-        const data = await response.json();
-        if (data.success) {
-          apiLeads = data.leads || [];
-        }
-      } catch (apiError) {
-        console.log('API no disponible, leyendo solo de localStorage');
-      }
+      // Cargar leads no importados de la API
+      const response = await fetch(`/api/public/lead?p=${currentProject.id}&imported=false`);
+      const data = await response.json();
 
-      // También leer de localStorage (del formulario)
-      const localLeadsRaw = localStorage.getItem('public_leads');
-      let localLeads: any[] = [];
-      if (localLeadsRaw) {
-        localLeads = JSON.parse(localLeadsRaw).filter((lead: any) => 
-          lead.projectId === currentProject.id && !lead.imported
-        );
-      }
-
-      // Combinar leads, eliminando duplicados
-      const allLeads = [...apiLeads];
-      const existingIds = new Set(apiLeads.map(l => l.id));
-      
-      for (const lead of localLeads) {
-        if (!existingIds.has(lead.id)) {
-          allLeads.push(lead);
-          existingIds.add(lead.id);
-        }
-      }
-
-      setPublicLeads(allLeads);
-      
-      if (apiLeads.length === 0 && localLeads.length > 0) {
-        toast.info('Cargando leads almacenados localmente');
+      if (data.success) {
+        setPublicLeads(data.leads || []);
+      } else {
+        setPublicLeads([]);
       }
     } catch (error) {
       console.error("Error al cargar leads públicos:", error);
-      toast.error('Error al cargar leads');
+      toast.error('Error al cargar leads del formulario');
       setPublicLeads([]);
     } finally {
       setIsLoadingPublicLeads(false);
+    }
+  };
+
+  // Función para cargar leads del proyecto desde la API
+  const loadLeadsFromAPI = async () => {
+    if (!currentProject) return;
+
+    try {
+      const response = await fetch(`/api/leads?projectId=${currentProject.id}`);
+      const data = await response.json();
+
+      if (data.success && data.leads) {
+        setLeads(data.leads);
+        // También guardar en localStorage para respaldo
+        saveToStorage(STORAGE_KEYS.LEADS, data.leads);
+      }
+    } catch (error) {
+      console.error('Error al cargar leads de la API:', error);
+      // Si falla la API, usar localStorage
+      const localLeads = getFromStorage<Lead[]>(STORAGE_KEYS.LEADS, [])
+        .filter(l => l.projectId === currentProject.id);
+      setLeads(localLeads);
     }
   };
 
@@ -656,55 +671,54 @@ export default function MerkaCRM() {
 
     // CORRECCIÓN: Usar la PRIMERA fase
     const firstStageKey = pipelineStages.length > 0 ? pipelineStages[0].key : 'LEAD';
-    
-    // Crear el lead en el CRM
-    const newLead: Lead = {
-      id: generateId(),
-      projectId: currentProject.id,
-      firstName: publicLead.firstName,
-      lastName: publicLead.lastName,
-      email: publicLead.email || undefined,
-      whatsapp: publicLead.whatsapp || undefined,
-      phone: publicLead.phone || undefined,
-      company: publicLead.company || undefined,
-      description: publicLead.message || undefined,
-      source: 'formulario' as any,
-      // CORRECCIÓN: Va a la primera fase
-      stage: firstStageKey,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
 
-    setLeads(prev => [...prev, newLead]);
-
-    // Marcar como importado en la API
     try {
-      await fetch(`/api/public/lead/${publicLead.id}`, {
-        method: 'PATCH',
+      // Crear el lead en la base de datos a través de la API
+      const response = await fetch('/api/leads', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imported: true }),
+        body: JSON.stringify({
+          projectId: currentProject.id,
+          firstName: publicLead.firstName,
+          lastName: publicLead.lastName,
+          email: publicLead.email || null,
+          whatsapp: publicLead.whatsapp || null,
+          phone: publicLead.phone || null,
+          company: publicLead.company || null,
+          description: publicLead.message || publicLead.description || null,
+          source: 'formulario',
+          stage: firstStageKey,
+        }),
       });
-    } catch (error) {
-      console.error('Error marking lead as imported in DB:', error);
-    }
 
-    // También marcar como importado en localStorage
-    try {
-      const localLeadsRaw = localStorage.getItem('public_leads');
-      if (localLeadsRaw) {
-        const localLeads = JSON.parse(localLeadsRaw);
-        const updatedLeads = localLeads.map((l: any) => 
-          l.id === publicLead.id ? { ...l, imported: true } : l
-        );
-        localStorage.setItem('public_leads', JSON.stringify(updatedLeads));
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Error al importar lead');
       }
-    } catch (error) {
-      console.error('Error marking lead as imported in localStorage:', error);
-    }
 
-    // Remover de la lista local
-    setPublicLeads(prev => prev.filter(l => l.id !== publicLead.id));
-    toast.success(`Lead "${publicLead.firstName} ${publicLead.lastName}" importado a la primera fase`);
+      // Marcar como importado en la API pública
+      try {
+        await fetch(`/api/public/lead/${publicLead.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imported: true }),
+        });
+      } catch (error) {
+        console.error('Error marcando lead como importado:', error);
+      }
+
+      // Remover de la lista de leads públicos
+      setPublicLeads(prev => prev.filter(l => l.id !== publicLead.id));
+
+      // Recargar leads del proyecto desde la API
+      await loadLeadsFromAPI();
+
+      toast.success(`Lead "${publicLead.firstName} ${publicLead.lastName}" importado a la primera fase`);
+    } catch (error) {
+      console.error('Error al importar lead:', error);
+      toast.error('Error al importar lead');
+    }
   };
 
   const handleImportAllPublicLeads = async () => {
@@ -717,30 +731,38 @@ export default function MerkaCRM() {
     let imported = 0;
     const importedIds: string[] = [];
 
+    // Importar cada lead a través de la API
     for (const publicLead of publicLeads) {
-      const newLead: Lead = {
-        id: generateId(),
-        projectId: currentProject.id,
-        firstName: publicLead.firstName,
-        lastName: publicLead.lastName,
-        email: publicLead.email || undefined,
-        whatsapp: publicLead.whatsapp || undefined,
-        phone: publicLead.phone || undefined,
-        company: publicLead.company || undefined,
-        description: publicLead.message || undefined,
-        source: 'formulario' as any,
-        // CORRECCIÓN: Va a la primera fase
-        stage: firstStageKey,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      try {
+        const response = await fetch('/api/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId: currentProject.id,
+            firstName: publicLead.firstName,
+            lastName: publicLead.lastName,
+            email: publicLead.email || null,
+            whatsapp: publicLead.whatsapp || null,
+            phone: publicLead.phone || null,
+            company: publicLead.company || null,
+            description: publicLead.message || publicLead.description || null,
+            source: 'formulario',
+            stage: firstStageKey,
+          }),
+        });
 
-      setLeads(prev => [...prev, newLead]);
-      importedIds.push(publicLead.id);
-      imported++;
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          importedIds.push(publicLead.id);
+          imported++;
+        }
+      } catch (error) {
+        console.error('Error importando lead:', error);
+      }
     }
 
-    // Marcar todos como importados en la API
+    // Marcar todos como importados en la API pública
     try {
       await Promise.all(
         importedIds.map(id =>
@@ -752,24 +774,14 @@ export default function MerkaCRM() {
         )
       );
     } catch (error) {
-      console.error('Error marking leads as imported:', error);
-    }
-
-    // También marcar como importados en localStorage
-    try {
-      const localLeadsRaw = localStorage.getItem('public_leads');
-      if (localLeadsRaw) {
-        const localLeads = JSON.parse(localLeadsRaw);
-        const updatedLeads = localLeads.map((l: any) => 
-          importedIds.includes(l.id) ? { ...l, imported: true } : l
-        );
-        localStorage.setItem('public_leads', JSON.stringify(updatedLeads));
-      }
-    } catch (error) {
-      console.error('Error marking leads as imported in localStorage:', error);
+      console.error('Error marcando leads como importados:', error);
     }
 
     setPublicLeads([]);
+
+    // Recargar leads del proyecto desde la API
+    await loadLeadsFromAPI();
+
     toast.success(`${imported} leads importados a la primera fase`);
   };
 
