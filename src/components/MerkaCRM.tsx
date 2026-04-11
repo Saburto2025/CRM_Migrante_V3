@@ -298,6 +298,9 @@ export default function MerkaCRM() {
   // Obtener permisos del usuario actual
   const permissions = currentUser ? ROLE_PERMISSIONS[currentUser.role] : null;
 
+  // Versión actual del CRM
+  const CRM_VERSION = 'v8.0 - 10/04/2026';
+
   // Initialize from localStorage
   useEffect(() => {
     // Cargar usuarios
@@ -1283,7 +1286,7 @@ export default function MerkaCRM() {
                 <span className="text-white font-bold text-lg">M</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">CRM MIGRANTE <span className="text-xs text-emerald-500 font-normal">v5.3-GDRIVE</span></h1>
+                <h1 className="text-xl font-bold text-slate-900">CRM MIGRANTE <span className="text-xs text-emerald-500 font-normal">{CRM_VERSION}</span></h1>
                 <p className="text-xs text-slate-500">Sistema de gestión de leads y ventas</p>
               </div>
             </div>

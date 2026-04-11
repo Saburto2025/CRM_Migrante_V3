@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -39,7 +39,7 @@ model CRMLead {
   notes         String?
   source        String   @default("manual")
   sourceDetails String?
-  estimatedValue Float?
+  estimatedValue Decimal? @db.Decimal(10, 2)
   stage         String   @default("LEAD")
   lostReason    String?
   lostNotes     String?

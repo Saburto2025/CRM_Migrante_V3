@@ -53,6 +53,9 @@ export default function GoogleDriveSync({ onDataLoad, getData }: GoogleDriveSync
     setCredentialsConfigured(hasClientId && hasApiKey);
   }, []);
 
+  // Mostrar advertencia si las credenciales no están configuradas
+  const showCredentialWarning = !credentialsConfigured;
+
   // Verificar autenticación al montar
   useEffect(() => {
     checkAuth();
@@ -87,7 +90,38 @@ export default function GoogleDriveSync({ onDataLoad, getData }: GoogleDriveSync
   // Iniciar login con Google
   const handleLogin = () => {
     if (!credentialsConfigured) {
-      toast.error('Google Drive no está configurado. Revisa la documentación para configurarlo.');
+      // Mostrar instrucciones detalladas de configuración
+      const instructions = `
+Para conectar Google Drive, necesitas configurar las credenciales:
+
+PASO 1: Ir a Google Cloud Console
+https://console.cloud.google.com/
+
+PASO 2: Crear un nuevo proyecto o seleccionar uno existente
+
+PASO 3: Habilitar la Google Drive API
+- Ve a "APIs & Services" > "Library"
+- Busca "Google Drive API" y habilítala
+
+PASO 4: Configurar OAuth 2.0
+- Ve a "APIs & Services" > "Credentials"
+- Haz clic en "Create Credentials" > "OAuth client ID"
+- Tipo de aplicación: "Web application"
+- Agrega tu dominio en "Authorized redirect URIs":
+  * https://tu-dominio.vercel.app
+
+PASO 5: Configurar variables de entorno en Vercel
+En tu proyecto de Vercel:
+1. Ve a Settings > Environment Variables
+2. Agrega estas variables:
+   - NEXT_PUBLIC_GOOGLE_CLIENT_ID = (tu Client ID)
+   - NEXT_PUBLIC_GOOGLE_API_KEY = (tu API Key opcional)
+
+PASO 6: Redesplegar
+Hace un nuevo commit y push para actualizar el deployment
+      `;
+
+      alert('⚠️ CONFIGURACIÓN DE GOOGLE DRIVE\n\n' + instructions);
       return;
     }
     const authUrl = GoogleDrive.getAuthUrl();
@@ -309,19 +343,24 @@ export default function GoogleDriveSync({ onDataLoad, getData }: GoogleDriveSync
               <p className="text-xs text-slate-400 mt-1">
                 Conecta para sincronizar tus datos
               </p>
-              {!credentialsConfigured && (
-                <p className="text-xs text-amber-600 mt-2 bg-amber-50 px-2 py-1 rounded">
-                  ⚠️ Google Drive no configurado
-                </p>
+              {showCredentialWarning && (
+                <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded">
+                  <p className="text-xs text-amber-800 font-medium flex items-center gap-1">
+                    ⚠️ Configuración requerida
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Haz clic en "Conectar con Google" para ver las instrucciones
+                  </p>
+                </div>
               )}
             </div>
 
             <DropdownMenuSeparator />
 
-            {/* Botón de login */}
-            <DropdownMenuItem onClick={handleLogin} className="text-emerald-600" disabled={!credentialsConfigured}>
+            {/* Botón de login - SIEMPRE visible */}
+            <DropdownMenuItem onClick={handleLogin} className={credentialsConfigured ? "text-emerald-600" : "text-amber-600"}>
               <LogIn className="h-4 w-4 mr-2" />
-              {!credentialsConfigured ? 'No configurado' : 'Conectar con Google'}
+              {credentialsConfigured ? 'Conectar con Google' : '🔧 Configurar Google Drive'}
             </DropdownMenuItem>
             
             <DropdownMenuSeparator />
