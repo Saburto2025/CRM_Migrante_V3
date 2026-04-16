@@ -1,5 +1,5 @@
-import MerkaCRM from '@/components/MerkaCRM';
+import { redirect } from 'next/navigation'
 
 export default function Home() {
-  return <MerkaCRM />;
+  redirect('/formulario')
 }
